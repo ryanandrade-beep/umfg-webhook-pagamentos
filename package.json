@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "db:init": "node scripts/initDb.js",
-    "test": "node --test --test-concurrency=1 tests/"
+    "test": "node --test --test-concurrency=1"
   },
   "license": "ISC",
   "engines": { "node": ">=20" },

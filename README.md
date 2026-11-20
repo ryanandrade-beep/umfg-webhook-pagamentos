@@ -140,6 +140,142 @@ Os testes também rodam automaticamente no GitHub Actions a cada push.
 
 Cobertura: criação, consulta, listagem com todos os filtros e paginação, histórico de eventos, atualização de status, persistência após reconectar, evento duplicado (inclusive concorrente), token inválido, dados inválidos e códigos HTTP.
 
+## Diagramas
+
+### Casos de uso
+
+```mermaid
+flowchart LR
+    operador(["Operador (interface web)"])
+    gateway(["Gateway de pagamento (simulado)"])
+
+    subgraph Sistema["Sistema de cobranças"]
+        uc1(["Criar cobrança"])
+        uc2(["Consultar cobrança"])
+        uc3(["Listar e filtrar cobranças"])
+        uc4(["Ver histórico de eventos"])
+        uc5(["Simular recebimento"])
+        uc6(["Receber notificação por webhook"])
+        uc7(["Validar token e dados"])
+        uc8(["Impedir evento duplicado"])
+    end
+
+    operador --> uc1
+    operador --> uc2
+    operador --> uc3
+    operador --> uc4
+    operador --> uc5
+    gateway --> uc6
+    uc6 -. inclui .-> uc7
+    uc6 -. inclui .-> uc8
+    uc5 -. usa o mesmo fluxo .-> uc6
+```
+
+### Arquitetura
+
+```mermaid
+flowchart LR
+    nav["Navegador<br/>index.html"] -->|"HTTP JSON"| rotas
+    gw["Gateway simulado<br/>curl ou REST Client"] -->|"POST /webhook/pagamento<br/>header x-webhook-token"| rotas
+
+    subgraph app["Aplicação Node.js + Express"]
+        rotas["Rotas<br/>pagamentos, webhook, simulação"] --> val["Validação"]
+        rotas --> svc["webhookService<br/>transação"]
+        rotas --> store["paymentStore"]
+        svc --> pool["Pool mysql2"]
+        store --> pool
+    end
+
+    pool --> mysql[("MySQL<br/>pagamentos<br/>eventos_webhook")]
+```
+
+### Modelo de dados (DER)
+
+```mermaid
+erDiagram
+    PAGAMENTOS ||--o{ EVENTOS_WEBHOOK : recebe
+    PAGAMENTOS {
+        char36 id PK
+        varchar255 cliente
+        decimal10_2 valor
+        varchar20 status
+        datetime3 criado_em
+        datetime3 atualizado_em
+    }
+    EVENTOS_WEBHOOK {
+        varchar100 evento_id PK
+        char36 pagamento_id FK
+        varchar20 status
+        datetime3 processado_em
+    }
+```
+
+### Estados da cobrança
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: POST /pagamentos
+    pending --> approved: evento approved
+    pending --> rejected: evento rejected
+    pending --> cancelled: evento cancelled
+    approved --> [*]
+    rejected --> [*]
+    cancelled --> [*]
+```
+
+Approved, rejected e cancelled são estados finais: novos eventos para uma cobrança finalizada retornam 409 e não alteram o status.
+
+### Sequência: criar cobrança e receber o webhook
+
+```mermaid
+sequenceDiagram
+    actor Op as Operador
+    participant UI as Interface
+    participant API as API Express
+    participant DB as MySQL
+    participant GW as Gateway simulado
+
+    Op->>UI: informa cliente e valor
+    UI->>API: POST /pagamentos
+    API->>API: valida os dados
+    API->>DB: INSERT pagamentos com status pending
+    API-->>UI: 201 com a cobrança
+
+    GW->>API: POST /webhook/pagamento com token, pagamentoId, status e eventoId
+    API->>API: confere o token e valida os dados
+    API->>DB: BEGIN e SELECT pagamento FOR UPDATE
+    API->>DB: INSERT eventos_webhook
+    API->>DB: UPDATE pagamentos SET status
+    API->>DB: COMMIT
+    API-->>GW: 200 Webhook processado
+
+    Op->>UI: consulta a cobrança
+    UI->>API: GET /pagamentos/:id
+    API->>DB: SELECT
+    API-->>UI: 200 com o status atualizado
+```
+
+### Atividade: processamento do webhook
+
+```mermaid
+flowchart TD
+    A(["Recebe POST /webhook/pagamento"]) --> B{"Token válido?"}
+    B -- não --> R401[/"401 Não autorizado"/]
+    B -- sim --> C{"Dados válidos?"}
+    C -- não --> R400[/"400 Dados inválidos"/]
+    C -- sim --> D["Inicia a transação e bloqueia o pagamento"]
+    D --> E{"Pagamento existe?"}
+    E -- não --> R404[/"404 Não encontrado"/]
+    E -- sim --> F["Registra o evento em eventos_webhook"]
+    F --> G{"eventoId já existe?"}
+    G -- sim --> R200D[/"200 duplicado, nada é alterado"/]
+    G -- não --> H{"Status atual é pending?"}
+    H -- não --> I["Desfaz a transação"]
+    I --> R409[/"409 Já finalizado"/]
+    H -- sim --> J["Atualiza o status e confirma a transação"]
+    J --> R200[/"200 Webhook processado"/]
+```
+
 ## Estrutura
 
 ```
