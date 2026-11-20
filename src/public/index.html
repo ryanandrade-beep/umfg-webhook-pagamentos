@@ -63,6 +63,17 @@
         ul.pagamentos li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border: 1px solid var(--borda); border-radius: 16px; cursor: pointer; background: var(--campo); transition: border-color .15s; }
         ul.pagamentos li:hover { border-color: var(--marca); }
         ul.pagamentos .selo { margin: 0; white-space: nowrap; }
+        .filtros { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 12px; align-items: end; margin-bottom: 8px; }
+        .filtros .campo-largo, .filtro-botoes { grid-column: 1 / -1; }
+        .filtro-botoes { display: flex; gap: 10px; justify-content: flex-end; }
+        .filtro-botoes button { width: auto; margin-top: 14px; }
+        button.secundario { background: transparent; color: var(--tinta); border: 1px solid var(--borda); }
+        button.secundario:hover:not(:disabled) { background: var(--campo); }
+        .paginacao { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; }
+        .paginacao button { width: auto; margin-top: 0; padding: 8px 16px; }
+        .historico { margin-top: 16px; text-align: left; }
+        .historico ul { list-style: none; display: grid; gap: 6px; margin-top: 8px; }
+        .historico li { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; padding: 8px 12px; border-radius: 12px; background: var(--campo); border: 1px solid var(--borda); }
         .vazio { color: var(--suave); text-align: center; padding: 20px 0; }
         @media (max-width: 760px) { main { grid-template-columns: 1fr; } h1 { font-size: 1.6rem; } }
     </style>
@@ -94,6 +105,11 @@
                 <p class="subtle">QR Code ilustrativo (não pagável)</p>
                 <div id="status" class="selo st-pending">Aguardando pagamento</div>
                 <p id="payment-id" class="subtle"></p>
+                <div class="historico">
+                    <div class="eyebrow">Eventos recebidos</div>
+                    <ul id="eventos"></ul>
+                    <p id="sem-eventos" class="subtle">Nenhum evento recebido ainda.</p>
+                </div>
                 <div class="simular">
                     <select id="status-simulado" aria-label="Status da notificação simulada">
                         <option value="approved">Aprovado</option>
@@ -106,18 +122,59 @@
         </section>
 
         <section class="card">
-            <div class="lista-topo">
-                <h2>Cobranças</h2>
-                <select id="filtro-status" aria-label="Filtrar por status">
-                    <option value="">Todas</option>
-                    <option value="pending">Pendentes</option>
-                    <option value="approved">Aprovadas</option>
-                    <option value="rejected">Recusadas</option>
-                    <option value="cancelled">Canceladas</option>
-                </select>
-            </div>
+            <h2>Cobranças</h2>
+            <form id="filtro-form" class="filtros">
+                <div class="campo-largo">
+                    <label for="f-cliente">Cliente</label>
+                    <input type="search" id="f-cliente" placeholder="Buscar por nome" autocomplete="off">
+                </div>
+                <div>
+                    <label for="f-status">Status</label>
+                    <select id="f-status">
+                        <option value="">Todos</option>
+                        <option value="pending">Pendentes</option>
+                        <option value="approved">Aprovadas</option>
+                        <option value="rejected">Recusadas</option>
+                        <option value="cancelled">Canceladas</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="f-limite">Por página</label>
+                    <select id="f-limite">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="f-valor-min">Valor mínimo</label>
+                    <input type="number" id="f-valor-min" min="0" step="0.01" placeholder="0,00">
+                </div>
+                <div>
+                    <label for="f-valor-max">Valor máximo</label>
+                    <input type="number" id="f-valor-max" min="0" step="0.01" placeholder="0,00">
+                </div>
+                <div>
+                    <label for="f-de">Data inicial</label>
+                    <input type="date" id="f-de">
+                </div>
+                <div>
+                    <label for="f-ate">Data final</label>
+                    <input type="date" id="f-ate">
+                </div>
+                <div class="filtro-botoes">
+                    <button type="button" id="btn-limpar" class="secundario">Limpar</button>
+                    <button type="submit">Filtrar</button>
+                </div>
+            </form>
+            <div class="lista-topo"><span id="total" class="subtle"></span></div>
             <ul id="lista" class="pagamentos"></ul>
             <p id="vazio" class="vazio" hidden>Nenhuma cobrança encontrada.</p>
+            <nav class="paginacao">
+                <button type="button" id="btn-anterior" class="secundario">← Anterior</button>
+                <span id="pagina-info" class="subtle"></span>
+                <button type="button" id="btn-proxima" class="secundario">Próxima →</button>
+            </nav>
         </section>
     </main>
 
@@ -137,8 +194,7 @@
         const statusLabel = document.querySelector("#status");
         const lista = document.querySelector("#lista");
         const vazio = document.querySelector("#vazio");
-        const filtroStatus = document.querySelector("#filtro-status");
-
+        
         let payment = null;
 
         const moeda = (valor) => Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -174,6 +230,7 @@
             statusLabel.textContent = ROTULOS[dados.status];
             statusLabel.className = `selo st-${dados.status}`;
             simulateButton.disabled = dados.status !== "pending";
+            carregarEventos();
         }
 
         form.addEventListener("submit", async (event) => {
@@ -226,12 +283,61 @@
             }
         });
 
-        async function carregarLista() {
-            const status = filtroStatus.value;
+        const campos = {
+            cliente: document.querySelector("#f-cliente"),
+            status: document.querySelector("#f-status"),
+            limite: document.querySelector("#f-limite"),
+            valorMin: document.querySelector("#f-valor-min"),
+            valorMax: document.querySelector("#f-valor-max"),
+            de: document.querySelector("#f-de"),
+            ate: document.querySelector("#f-ate")
+        };
+        const btnAnterior = document.querySelector("#btn-anterior");
+        const btnProxima = document.querySelector("#btn-proxima");
+        let pagina = 1;
+
+        function montarConsulta() {
+            const params = new URLSearchParams({ pagina });
+            for (const [nome, campo] of Object.entries(campos)) {
+                const valor = campo.value.trim();
+                if (valor) params.set(nome, valor);
+            }
+            return params;
+        }
+
+        async function carregarEventos() {
+            const ul = document.querySelector("#eventos");
+            const vazioEventos = document.querySelector("#sem-eventos");
+            ul.innerHTML = "";
             try {
-                const dados = await requisitar(`/pagamentos?limite=10${status ? "&status=" + status : ""}`);
+                const dados = await requisitar(`/pagamentos/${payment.id}/eventos`);
+                vazioEventos.hidden = dados.eventos.length > 0;
+                for (const e of dados.eventos) {
+                    const li = document.createElement("li");
+                    const id = document.createElement("span");
+                    id.textContent = e.eventoId;
+                    const info = document.createElement("span");
+                    info.textContent = `${ROTULOS[e.status]} · ${new Date(e.processadoEm).toLocaleString("pt-BR")}`;
+                    li.append(id, info);
+                    ul.append(li);
+                }
+            } catch {
+                vazioEventos.hidden = false;
+            }
+        }
+
+        async function carregarLista() {
+            try {
+                const dados = await requisitar(`/pagamentos?${montarConsulta()}`);
+                const totalPaginas = Math.max(1, Math.ceil(dados.total / dados.limite));
                 lista.innerHTML = "";
                 vazio.hidden = dados.pagamentos.length > 0;
+                document.querySelector("#total").textContent =
+                    `${dados.total} ${dados.total === 1 ? "cobrança" : "cobranças"}`;
+                document.querySelector("#pagina-info").textContent = `Página ${dados.pagina} de ${totalPaginas}`;
+                btnAnterior.disabled = dados.pagina <= 1;
+                btnProxima.disabled = dados.pagina >= totalPaginas;
+
                 for (const p of dados.pagamentos) {
                     const item = document.createElement("li");
                     const nome = document.createElement("span");
@@ -248,7 +354,41 @@
             }
         }
 
-        filtroStatus.addEventListener("change", carregarLista);
+        document.querySelector("#filtro-form").addEventListener("submit", (evento) => {
+            evento.preventDefault();
+            mostrar("");
+            if (campos.valorMin.value && campos.valorMax.value && Number(campos.valorMin.value) > Number(campos.valorMax.value)) {
+                return mostrar("O valor mínimo não pode ser maior que o máximo.", "erro");
+            }
+            if (campos.de.value && campos.ate.value && campos.de.value > campos.ate.value) {
+                return mostrar("A data inicial não pode ser posterior à data final.", "erro");
+            }
+            pagina = 1;
+            carregarLista();
+        });
+
+        document.querySelector("#btn-limpar").addEventListener("click", () => {
+            document.querySelector("#filtro-form").reset();
+            mostrar("");
+            pagina = 1;
+            carregarLista();
+        });
+
+        campos.limite.addEventListener("change", () => {
+            pagina = 1;
+            carregarLista();
+        });
+
+        btnAnterior.addEventListener("click", () => {
+            pagina--;
+            carregarLista();
+        });
+
+        btnProxima.addEventListener("click", () => {
+            pagina++;
+            carregarLista();
+        });
+
         carregarLista();
     </script>
 </body>

@@ -1,5 +1,9 @@
 # Cobranças e notificações por webhook
 
+![Testes](../../actions/workflows/testes.yml/badge.svg)
+
+![Fluxo da aplicação](docs/fluxo.png)
+
 Sistema **demonstrativo** (Node.js + Express + MySQL) para criar cobranças, consultá-las e acompanhar o status por webhook. Não realiza pagamentos reais e o QR Code é apenas ilustrativo.
 
 ## Requisitos
@@ -7,7 +11,15 @@ Sistema **demonstrativo** (Node.js + Express + MySQL) para criar cobranças, con
 - Node.js 20 ou superior
 - MySQL 8 em execução (ex.: `docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=root mysql:8`)
 
-## Instalação
+## Início rápido com Docker
+
+```bash
+docker compose up --build
+```
+
+Sobe o MySQL e a aplicação juntos, cria o banco automaticamente e deixa tudo em http://localhost:3000 (token do webhook: `token-da-application`).
+
+## Instalação sem Docker
 
 ```bash
 npm install
@@ -50,11 +62,22 @@ A chave primária de `eventos_webhook` garante que o mesmo evento nunca seja pro
 | Método | Rota | Descrição | Sucesso | Erros |
 |---|---|---|---|---|
 | POST | `/pagamentos` | Cria cobrança (`cliente`, `valor`) | 201 | 400 |
-| GET | `/pagamentos` | Lista cobranças. Query: `status`, `limite` (1-100, padrão 20), `pagina` | 200 | 400 |
+| GET | `/pagamentos` | Lista cobranças com filtros e paginação (ver abaixo) | 200 | 400 |
 | GET | `/pagamentos/:id` | Consulta uma cobrança | 200 | 400, 404 |
+| GET | `/pagamentos/:id/eventos` | Lista os eventos de webhook processados para a cobrança | 200 | 400, 404 |
 | POST | `/webhook/pagamento` | Recebe atualização de status (header `x-webhook-token`) | 200 | 400, 401, 404, 409 |
 | GET | `/saude` | Verifica se o servidor está online | 200 | |
 | POST | `/simulacao/webhook` | Usado pela interface para simular uma notificação | 200 | 400, 404, 409 |
+
+Filtros de `GET /pagamentos` (todos opcionais e combináveis):
+
+| Parâmetro | Descrição |
+|---|---|
+| `status` | `pending`, `approved`, `rejected` ou `cancelled` |
+| `cliente` | Nome do cliente (busca parcial, sem diferenciar maiúsculas) |
+| `valorMin` / `valorMax` | Faixa de valor (maior ou igual a zero) |
+| `de` / `ate` | Período de criação, formato `AAAA-MM-DD` (inclui o dia final inteiro, em UTC) |
+| `limite` / `pagina` | Paginação (limite de 1 a 100, padrão 20) |
 
 Status de cobrança: `pending`, `approved`, `rejected`, `cancelled`. O webhook aceita `approved`, `rejected` e `cancelled`.
 
@@ -89,6 +112,7 @@ Listar e filtrar por status:
 ```bash
 curl "http://localhost:3000/pagamentos"
 curl "http://localhost:3000/pagamentos?status=pending&limite=10&pagina=1"
+curl "http://localhost:3000/pagamentos?cliente=ana&valorMin=10&valorMax=100&de=2026-11-01&ate=2026-11-30"
 ```
 
 Enviar webhook:
@@ -112,7 +136,9 @@ Os testes usam o MySQL real em um banco separado (`MYSQL_TEST_DATABASE`, criado 
 npm test
 ```
 
-Cobertura: criação, consulta, listagem com filtro e paginação, atualização de status, persistência após reconectar, evento duplicado (inclusive concorrente), token inválido, dados inválidos e códigos HTTP.
+Os testes também rodam automaticamente no GitHub Actions a cada push.
+
+Cobertura: criação, consulta, listagem com todos os filtros e paginação, histórico de eventos, atualização de status, persistência após reconectar, evento duplicado (inclusive concorrente), token inválido, dados inválidos e códigos HTTP.
 
 ## Estrutura
 

@@ -1,7 +1,7 @@
 const { test, before, after, describe } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { app, request, prepararBanco, criarPagamento, executar, fechar } = require("./helpers");
+const { app, request, prepararBanco, criarPagamento, enviarWebhook, executar, fechar } = require("./helpers");
 
 before(prepararBanco);
 after(fechar);
@@ -101,6 +101,88 @@ describe("consulta de pagamentos", () => {
         assert.equal((await request(app).get("/pagamentos?status=xyz")).status, 400);
         assert.equal((await request(app).get("/pagamentos?limite=0")).status, 400);
         assert.equal((await request(app).get("/pagamentos?pagina=abc")).status, 400);
+    });
+});
+
+describe("filtros avançados", () => {
+    before(async () => {
+        await executar("DELETE FROM eventos_webhook");
+        await executar("DELETE FROM pagamentos");
+        await criarPagamento("Ana Silva", 10);
+        await criarPagamento("Bruno Souza", 50);
+        await criarPagamento("Ana Paula 100%", 120.5);
+        const antigo = await criarPagamento("Carla Antiga", 75);
+        await executar("UPDATE pagamentos SET criado_em = '2026-01-15 12:00:00.000' WHERE id = ?", [antigo.id]);
+    });
+
+    const clientes = (resposta) => resposta.body.pagamentos.map((p) => p.cliente).sort();
+
+    test("filtra por nome do cliente (parcial, sem diferenciar maiúsculas)", async () => {
+        const resposta = await request(app).get("/pagamentos?cliente=ana");
+        assert.equal(resposta.status, 200);
+        assert.deepEqual(clientes(resposta), ["Ana Paula 100%", "Ana Silva"]);
+    });
+
+    test("trata % e _ do nome como texto literal", async () => {
+        const resposta = await request(app).get("/pagamentos?cliente=" + encodeURIComponent("100%"));
+        assert.deepEqual(clientes(resposta), ["Ana Paula 100%"]);
+        const curinga = await request(app).get("/pagamentos?cliente=" + encodeURIComponent("%"));
+        assert.deepEqual(clientes(curinga), ["Ana Paula 100%"]);
+    });
+
+    test("filtra por valor mínimo e máximo", async () => {
+        const min = await request(app).get("/pagamentos?valorMin=75");
+        assert.deepEqual(clientes(min), ["Ana Paula 100%", "Carla Antiga"]);
+
+        const faixa = await request(app).get("/pagamentos?valorMin=10&valorMax=50");
+        assert.deepEqual(clientes(faixa), ["Ana Silva", "Bruno Souza"]);
+    });
+
+    test("filtra por período de criação (inclui o dia final inteiro)", async () => {
+        const hoje = new Date().toISOString().slice(0, 10);
+
+        const recentes = await request(app).get(`/pagamentos?de=${hoje}&ate=${hoje}`);
+        assert.equal(recentes.body.total, 3);
+
+        const antigos = await request(app).get("/pagamentos?de=2026-01-01&ate=2026-01-15");
+        assert.deepEqual(clientes(antigos), ["Carla Antiga"]);
+    });
+
+    test("combina vários filtros", async () => {
+        const resposta = await request(app).get("/pagamentos?cliente=ana&valorMax=50&status=pending");
+        assert.deepEqual(clientes(resposta), ["Ana Silva"]);
+    });
+
+    test("rejeita filtros inválidos com 400", async () => {
+        for (const consulta of [
+            "valorMin=abc",
+            "valorMin=-1",
+            "valorMin=10&valorMax=5",
+            "de=15/01/2026",
+            "de=2026-02-31",
+            "de=2026-02-10&ate=2026-02-01"
+        ]) {
+            const resposta = await request(app).get(`/pagamentos?${consulta}`);
+            assert.equal(resposta.status, 400, consulta);
+        }
+    });
+});
+
+describe("histórico de eventos", () => {
+    test("lista os eventos processados de um pagamento", async () => {
+        const pagamento = await criarPagamento("Eventos", 5);
+        await enviarWebhook({ pagamentoId: pagamento.id, status: "approved", eventoId: "evt-historico" });
+
+        const resposta = await request(app).get(`/pagamentos/${pagamento.id}/eventos`);
+        assert.equal(resposta.status, 200);
+        assert.equal(resposta.body.eventos.length, 1);
+        assert.equal(resposta.body.eventos[0].eventoId, "evt-historico");
+        assert.equal(resposta.body.eventos[0].status, "approved");
+    });
+
+    test("retorna 404 e 400 para pagamento inexistente ou id inválido", async () => {
+        assert.equal((await request(app).get("/pagamentos/66666666-6666-4666-8666-666666666666/eventos")).status, 404);
+        assert.equal((await request(app).get("/pagamentos/abc/eventos")).status, 400);
     });
 });
 

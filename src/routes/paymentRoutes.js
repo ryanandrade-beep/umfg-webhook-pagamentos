@@ -1,6 +1,6 @@
 const express = require("express");
 
-const { criarPagamento, buscarPagamento, listarPagamentos } = require("../store/paymentStore");
+const { criarPagamento, buscarPagamento, listarPagamentos, listarEventos } = require("../store/paymentStore");
 const { validarNovoPagamento, validarConsulta, idValido } = require("../validacao");
 
 const router = express.Router();
@@ -44,6 +44,22 @@ router.get("/:id", async (req, res, next) => {
             return res.status(404).json({ erro: "Pagamento não encontrado" });
         }
         return res.json(pagamento);
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.get("/:id/eventos", async (req, res, next) => {
+    if (!idValido(req.params.id)) {
+        return res.status(400).json({ erro: "Identificador de pagamento inválido" });
+    }
+
+    try {
+        const pagamento = await buscarPagamento(req.params.id);
+        if (!pagamento) {
+            return res.status(404).json({ erro: "Pagamento não encontrado" });
+        }
+        return res.json({ pagamentoId: pagamento.id, eventos: await listarEventos(pagamento.id) });
     } catch (error) {
         next(error);
     }

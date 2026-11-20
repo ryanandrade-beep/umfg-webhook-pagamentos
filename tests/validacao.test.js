@@ -59,6 +59,32 @@ describe("validarConsulta", () => {
     });
 });
 
+describe("validarConsulta: filtros avançados", () => {
+    test("normaliza nome do cliente e converte valores", () => {
+        const { erros, filtros } = validarConsulta({ cliente: "  ana ", valorMin: "10", valorMax: "50.5", de: "2026-01-01", ate: "2026-01-31" });
+        assert.deepEqual(erros, []);
+        assert.equal(filtros.cliente, "ana");
+        assert.equal(filtros.valorMin, 10);
+        assert.equal(filtros.valorMax, 50.5);
+    });
+
+    test("ignora valores vazios", () => {
+        const { erros, filtros } = validarConsulta({ valorMin: "", cliente: "   " });
+        assert.deepEqual(erros, []);
+        assert.equal(filtros.valorMin, undefined);
+        assert.equal(filtros.cliente, undefined);
+    });
+
+    test("rejeita faixa de valor e período invertidos", () => {
+        assert.equal(validarConsulta({ valorMin: "10", valorMax: "5" }).erros.length, 1);
+        assert.equal(validarConsulta({ de: "2026-02-10", ate: "2026-02-01" }).erros.length, 1);
+    });
+
+    test("rejeita data inexistente", () => {
+        assert.equal(validarConsulta({ de: "2026-02-30" }).erros.length, 1);
+    });
+});
+
 describe("idValido", () => {
     test("reconhece UUID", () => {
         assert.equal(idValido(ID), true);

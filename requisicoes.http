@@ -13,8 +13,14 @@ GET {{host}}/pagamentos
 ### Listar apenas pendentes
 GET {{host}}/pagamentos?status=pending&limite=10&pagina=1
 
+### Filtrar por cliente, valor e período
+GET {{host}}/pagamentos?cliente=ana&valorMin=10&valorMax=100&de=2026-11-01&ate=2026-11-30
+
 ### Consultar por id (troque pelo id retornado)
 GET {{host}}/pagamentos/00000000-0000-4000-8000-000000000000
+
+### Eventos de um pagamento
+GET {{host}}/pagamentos/00000000-0000-4000-8000-000000000000/eventos
 
 ### Webhook: aprovar pagamento
 POST {{host}}/webhook/pagamento
