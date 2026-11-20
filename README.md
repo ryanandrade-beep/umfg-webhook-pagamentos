@@ -53,6 +53,7 @@ A chave primária de `eventos_webhook` garante que o mesmo evento nunca seja pro
 | GET | `/pagamentos` | Lista cobranças. Query: `status`, `limite` (1-100, padrão 20), `pagina` | 200 | 400 |
 | GET | `/pagamentos/:id` | Consulta uma cobrança | 200 | 400, 404 |
 | POST | `/webhook/pagamento` | Recebe atualização de status (header `x-webhook-token`) | 200 | 400, 401, 404, 409 |
+| GET | `/saude` | Verifica se o servidor está online | 200 | |
 | POST | `/simulacao/webhook` | Usado pela interface para simular uma notificação | 200 | 400, 404, 409 |
 
 Status de cobrança: `pending`, `approved`, `rejected`, `cancelled`. O webhook aceita `approved`, `rejected` e `cancelled`.
@@ -65,6 +66,7 @@ Respostas do webhook:
 - `400`: `pagamentoId` (UUID), `status` ou `eventoId` inválidos.
 - `404`: pagamento não existe.
 - `409`: pagamento já finalizado (não é possível mudar o status novamente).
+- `503`: banco de dados indisponível.
 
 ## Exemplos de requisições
 
@@ -98,6 +100,8 @@ curl -X POST http://localhost:3000/webhook/pagamento \
   -d '{"pagamentoId":"<ID>","status":"approved","eventoId":"evt-001"}'
 ```
 
+O arquivo `requisicoes.http` traz todos os exemplos (VS Code com a extensão REST Client, ou JetBrains).
+
 Repetir o mesmo comando retorna `"duplicado": true`. Com token errado retorna `401`.
 
 ## Testes
@@ -122,5 +126,6 @@ src/routes/                  pagamentos, webhook, simulação
 src/services/webhookService  transação do webhook
 src/store/                   conexão MySQL e consultas
 src/public/index.html        interface
-tests/                       testes automatizados
+tests/                       testes automatizados (API e validação)
+requisicoes.http             exemplos de requisições
 ```

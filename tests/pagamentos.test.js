@@ -103,3 +103,17 @@ describe("consulta de pagamentos", () => {
         assert.equal((await request(app).get("/pagamentos?pagina=abc")).status, 400);
     });
 });
+
+describe("rotas gerais", () => {
+    test("rota inexistente retorna 404 em JSON", async () => {
+        const resposta = await request(app).get("/nao-existe");
+        assert.equal(resposta.status, 404);
+        assert.ok(resposta.body.erro);
+    });
+
+    test("rota de saúde responde online", async () => {
+        const resposta = await request(app).get("/saude");
+        assert.equal(resposta.status, 200);
+        assert.equal(resposta.body.status, "online");
+    });
+});

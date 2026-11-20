@@ -14,6 +14,10 @@ app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+app.get("/saude", (req, res) => {
+    res.json({ servico: "webhook de pagamentos", status: "online" });
+});
+
 app.use("/pagamentos", paymentRoutes);
 app.use("/webhook", webhookRoutes);
 app.use("/simulacao", simulacaoRoutes);
@@ -28,6 +32,10 @@ app.use((error, req, res, next) => {
     }
     if (error.type === "entity.too.large") {
         return res.status(413).json({ erro: "Corpo da requisição muito grande" });
+    }
+    if (["ECONNREFUSED", "PROTOCOL_CONNECTION_LOST", "ER_ACCESS_DENIED_ERROR", "ER_BAD_DB_ERROR", "ETIMEDOUT"].includes(error.code)) {
+        console.error("Banco de dados indisponível:", error.code);
+        return res.status(503).json({ erro: "Banco de dados indisponível. Tente novamente em instantes." });
     }
     console.error(error);
     return res.status(500).json({ erro: "Erro interno do servidor" });

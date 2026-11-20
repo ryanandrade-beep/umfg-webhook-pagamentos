@@ -1,0 +1,38 @@
+@host = http://localhost:3000
+@token = token-da-application
+
+### Criar cobrança
+POST {{host}}/pagamentos
+Content-Type: application/json
+
+{ "cliente": "Ana Silva", "valor": 50.5 }
+
+### Listar cobranças
+GET {{host}}/pagamentos
+
+### Listar apenas pendentes
+GET {{host}}/pagamentos?status=pending&limite=10&pagina=1
+
+### Consultar por id (troque pelo id retornado)
+GET {{host}}/pagamentos/00000000-0000-4000-8000-000000000000
+
+### Webhook: aprovar pagamento
+POST {{host}}/webhook/pagamento
+Content-Type: application/json
+x-webhook-token: {{token}}
+
+{ "pagamentoId": "00000000-0000-4000-8000-000000000000", "status": "approved", "eventoId": "evt-001" }
+
+### Webhook: token inválido (401)
+POST {{host}}/webhook/pagamento
+Content-Type: application/json
+x-webhook-token: errado
+
+{ "pagamentoId": "00000000-0000-4000-8000-000000000000", "status": "approved", "eventoId": "evt-002" }
+
+### Webhook: dados inválidos (400)
+POST {{host}}/webhook/pagamento
+Content-Type: application/json
+x-webhook-token: {{token}}
+
+{ "pagamentoId": "abc", "status": "xyz" }
