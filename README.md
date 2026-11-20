@@ -2,14 +2,30 @@
 
 ![Testes](../../actions/workflows/testes.yml/badge.svg)
 
-![Fluxo da aplicação](docs/fluxo.png)
-
 Sistema **demonstrativo** (Node.js + Express + MySQL) para criar cobranças, consultá-las e acompanhar o status por webhook. Não realiza pagamentos reais e o QR Code é apenas ilustrativo.
 
 ## Requisitos
 
 - Node.js 20 ou superior
 - MySQL 8 em execução (ex.: `docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=root mysql:8`)
+
+## Telas
+
+**Fluxo completo:** cobrança criada, notificação simulada e histórico de eventos.
+
+![Fluxo completo](docs/fluxo.png)
+
+**Filtros combinados** (nome do cliente e valor máximo):
+
+![Filtros](docs/filtros.png)
+
+**Mensagem de erro de validação:**
+
+![Validação](docs/validacao.png)
+
+**Versão para celular:**
+
+<img src="docs/mobile.png" alt="Versão para celular" width="320">
 
 ## Início rápido com Docker
 
@@ -137,6 +153,15 @@ npm test
 ```
 
 Os testes também rodam automaticamente no GitHub Actions a cada push.
+
+Resultado esperado:
+
+```text
+ℹ tests 61
+ℹ suites 14
+ℹ pass 61
+ℹ fail 0
+```
 
 Cobertura: criação, consulta, listagem com todos os filtros e paginação, histórico de eventos, atualização de status, persistência após reconectar, evento duplicado (inclusive concorrente), token inválido, dados inválidos e códigos HTTP.
 
